@@ -1,0 +1,79 @@
+name: Heart Disease Data Preprocessing
+
+# Trigger workflow on push to main branch or manual trigger
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'heart.csv'
+      - 'preprocessing/automate_Andre.py'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  preprocessing:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Step 1: Checkout repository
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    # Step 2: Set up Python
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    # Step 3: Install dependencies
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pandas numpy scikit-learn joblib matplotlib seaborn
+        
+    # Step 4: Create necessary directories
+    - name: Create Directories
+      run: |
+        mkdir -p data/processed
+        mkdir -p models
+        
+    # Step 5: Run preprocessing
+    - name: Run Data Preprocessing
+      run: |
+        cd preprocessing
+        python automate_Andre.py
+        
+    # Step 6: List output files
+    - name: List Generated Files
+      run: |
+        echo "=== Generated Files ==="
+        ls -la data/processed/
+        ls -la models/
+        echo "=== Preprocessing Summary ==="
+        echo "✅ Preprocessing completed successfully!"
+        
+    # Step 7: Upload processed data as artifacts
+    - name: Upload Processed Data
+      uses: actions/upload-artifact@v3
+      with:
+        name: processed-heart-data
+        path: |
+          data/processed/
+          models/
+        retention-days: 30
+        
+    # Step 8: Commit and push processed data (optional)
+    - name: Commit Processed Data
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add data/processed/ models/
+        git diff --staged --quiet || git commit -m "🤖 Auto-update: Processed heart disease data $(date '+%Y-%m-%d %H:%M:%S')"
+        
+    # Step 9: Push changes
+    - name: Push Changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: main
