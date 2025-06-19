@@ -14,6 +14,8 @@ on:
 jobs:
   preprocessing:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for pushing changes
     
     steps:
     # Step 1: Checkout repository
@@ -64,16 +66,14 @@ jobs:
         retention-days: 30
         
     # Step 8: Commit and push processed data (optional)
-    - name: Commit Processed Data
+    - name: Commit and Push Processed Data
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add data/processed/ models/
-        git diff --staged --quiet || git commit -m "🤖 Auto-update: Processed heart disease data $(date '+%Y-%m-%d %H:%M:%S')"
-        
-    # Step 9: Push changes
-    - name: Push Changes
-      uses: ad-m/github-push-action@master
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: main
+        if ! git diff --staged --quiet; then
+          git commit -m "🤖 Auto-update: Processed heart disease data $(date '+%Y-%m-%d %H:%M:%S')"
+          git push
+        else
+          echo "No changes to commit"
+        fi
