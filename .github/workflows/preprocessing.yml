@@ -4,9 +4,6 @@ name: Heart Disease Data Preprocessing
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'heart.csv'
-      - 'preprocessing/**'
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:  # Allow manual trigger
@@ -16,62 +13,111 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    # Step 1: Checkout repository
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up Python
+    # Step 2: Set up Python
+    - name: Set up Python 3.9
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
+    # Step 3: Cache dependencies
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    # Step 4: Install dependencies
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pandas numpy scikit-learn joblib matplotlib seaborn
+        pip install pandas numpy scikit-learn matplotlib seaborn
     
-    - name: Create directories
+    # Step 5: Verify input data exists
+    - name: Check input data
       run: |
-        mkdir -p preprocessing/data/processed
+        if [ -f "heart.csv" ]; then
+          echo "✅ Input dataset found: heart.csv"
+          head -5 heart.csv
+        else
+          echo "❌ Input dataset not found!"
+          exit 1
+        fi
     
+    # Step 6: Run preprocessing
     - name: Run automated preprocessing
-      working-directory: ./preprocessing
       run: |
-        python automate_Andre.py
+        echo "Starting automated preprocessing..."
+        python preprocessing/automate_Andre.py
+        echo "Preprocessing completed!"
     
-    - name: Check processed files
+    # Step 7: Verify output files
+    - name: Verify processed data
       run: |
-        echo "Checking processed files..."
-        ls -la preprocessing/data/processed/
-        
-        echo "X_train.csv shape:"
-        python -c "import pandas as pd; print(pd.read_csv('preprocessing/data/processed/X_train.csv').shape)"
-        
-        echo "X_test.csv shape:"
-        python -c "import pandas as pd; print(pd.read_csv('preprocessing/data/processed/X_test.csv').shape)"
-        
-        echo "y_train.csv shape:"
-        python -c "import pandas as pd; print(pd.read_csv('preprocessing/data/processed/y_train.csv').shape)"
-        
-        echo "y_test.csv shape:"
-        python -c "import pandas as pd; print(pd.read_csv('preprocessing/data/processed/y_test.csv').shape)"
+        echo "Checking output files..."
+        if [ -d "preprocessing/heart_preprocessing" ]; then
+          echo "✅ Output directory created"
+          ls -la preprocessing/heart_preprocessing/
+          
+          # Check each required file
+          files=("X_train.csv" "X_test.csv" "y_train.csv" "y_test.csv" "heart_processed.csv" "feature_names.csv")
+          for file in "${files[@]}"; do
+            if [ -f "preprocessing/heart_preprocessing/$file" ]; then
+              echo "✅ $file exists ($(wc -l < preprocessing/heart_preprocessing/$file) lines)"
+            else
+              echo "❌ $file missing!"
+              exit 1
+            fi
+          done
+        else
+          echo "❌ Output directory not found!"
+          exit 1
+        fi
     
-    - name: Upload processed data as artifacts
+    # Step 8: Upload processed data as artifacts
+    - name: Upload processed datasets
       uses: actions/upload-artifact@v4
       with:
-        name: processed-heart-data
-        path: |
-          preprocessing/data/processed/X_train.csv
-          preprocessing/data/processed/X_test.csv
-          preprocessing/data/processed/y_train.csv
-          preprocessing/data/processed/y_test.csv
-          preprocessing/data/processed/preprocessor.pkl
+        name: heart-processed-data
+        path: preprocessing/heart_preprocessing/
         retention-days: 30
     
-    - name: Commit processed data (if on main branch)
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Step 9: Create summary report
+    - name: Generate processing summary
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add preprocessing/data/processed/
-        git diff --staged --quiet || git commit -m "Auto-update processed data [skip ci]"
-        git push
+        echo "# Heart Disease Data Preprocessing Summary" > preprocessing_summary.md
+        echo "" >> preprocessing_summary.md
+        echo "**Processing Date:** $(date)" >> preprocessing_summary.md
+        echo "**Workflow:** ${{ github.workflow }}" >> preprocessing_summary.md
+        echo "**Run ID:** ${{ github.run_id }}" >> preprocessing_summary.md
+        echo "" >> preprocessing_summary.md
+        echo "## Processed Files:" >> preprocessing_summary.md
+        echo "" >> preprocessing_summary.md
+        for file in preprocessing/heart_preprocessing/*.csv; do
+          filename=$(basename "$file")
+          lines=$(wc -l < "$file")
+          size=$(du -h "$file" | cut -f1)
+          echo "- **$filename**: $lines lines, $size" >> preprocessing_summary.md
+        done
+        echo "" >> preprocessing_summary.md
+        echo "## Feature Names:" >> preprocessing_summary.md
+        echo "\`\`\`" >> preprocessing_summary.md
+        cat preprocessing/heart_preprocessing/feature_names.csv >> preprocessing_summary.md
+        echo "\`\`\`" >> preprocessing_summary.md
+        
+        # Display summary
+        echo "=== PROCESSING SUMMARY ==="
+        cat preprocessing_summary.md
+    
+    # Step 10: Upload summary report
+    - name: Upload summary report
+      uses: actions/upload-artifact@v4
+      with:
+        name: preprocessing-summary
+        path: preprocessing_summary.md
+        retention-days: 30
